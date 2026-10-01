@@ -738,7 +738,7 @@ class TickerWidget(tk.Tk):
         self.banner_lbl.config(
             text=
             (
-                "● Market open · Live prices"
+                "● Market open · Live prices 🧿"
                 if open_now
                 else "● Markets closed · Showing last available price"
             )
