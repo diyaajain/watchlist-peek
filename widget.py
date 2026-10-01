@@ -235,7 +235,7 @@ class TickerWidget(tk.Tk):
 
     def add_symbol_dialog(self):
         symbol = ask_string(
-            self, "Add symbol", "yfinance symbol, e.g. RELIANCE.NS, TCS.NS, ^NSEI:"
+            self, "Add symbol", "yfinance symbol, e.g. RELIANCE.NS, TCS.NS, AAPL, MSFT:"
         )
         if not symbol:
             return
@@ -246,8 +246,8 @@ class TickerWidget(tk.Tk):
             if not ask_yes_no(
                 self, "Symbol not found",
                 f"Couldn't fetch a price for {symbol}.\n\n"
-                f"Double-check the symbol (NSE stocks need a .NS suffix, "
-                f"e.g. RELIANCE.NS). Add it anyway?"
+                f"Double-check the yfinance symbol. "
+                f"Examples: RELIANCE.NS for India, AAPL for the US. Add it anyway?"
             ):
                 return
         db.add_symbol(symbol, name)
@@ -281,6 +281,19 @@ class TickerWidget(tk.Tk):
             return f"({q['change']:+.2f} / {q['pct_change']:+.2f}%)"
         return f"({q['pct_change']:+.2f}%)"  # "pct", and the default fallback
 
+    @staticmethod
+    def _format_price(q: dict) -> str:
+        currency = q.get("currency", "USD")
+        symbol = {
+            "INR": "₹",
+            "USD": "$",
+            "EUR": "€",
+            "GBP": "£",
+            "JPY": "¥",
+        }.get(currency, f"{currency} ")
+
+        return f"{symbol}{q['price']:,.2f}"
+
     def _render(self, quotes: dict[str, dict]):
         self._last_quotes = quotes
         any_stale = False
@@ -293,7 +306,7 @@ class TickerWidget(tk.Tk):
                 continue
             arrow = "▲" if q["change"] >= 0 else "▼"
             color = GREEN if q["change"] >= 0 else RED
-            text = f"{arrow} {q['price']:,.2f}  {self._format_change(q)}"
+            text = f"{arrow} {self._format_price(q)}  {self._format_change(q)}"
             if q["stale"]:
                 text += " ⚠"
                 any_stale = True

@@ -26,7 +26,8 @@ def _from_fast_info(symbol: str) -> dict | None:
             if DEBUG:
                 print(f"[debug] {symbol}: fast_info gave price={price} prev_close={prev_close}")
             return None
-        return price, prev_close
+        currency = info.get("currency") or "USD"
+        return price, prev_close, currency
     except Exception as e:
         if DEBUG:
             print(f"[debug] {symbol}: fast_info raised {type(e).__name__}: {e}")
@@ -47,7 +48,11 @@ def _from_history(symbol: str) -> dict | None:
         if len(closes) < 2:
             return None
         price, prev_close = float(closes.iloc[-1]), float(closes.iloc[-2])
-        return price, prev_close
+        try:
+            currency = yf.Ticker(symbol).fast_info.get("currency") or "USD"
+        except Exception:
+            currency = "USD"
+        return price, prev_close, currency
     except Exception as e:
         if DEBUG:
             print(f"[debug] {symbol}: history() raised {type(e).__name__}: {e}")
@@ -58,15 +63,16 @@ def _quote_for(symbol: str) -> dict | None:
     result = _from_fast_info(symbol) or _from_history(symbol)
     if result is None:
         return None
-    price, prev_close = result
+    price, prev_close, currency = result
     change = price - prev_close
     pct = 100 * change / prev_close
     return {"price": round(price, 2), "prev_close": round(prev_close, 2),
-            "change": round(change, 2), "pct_change": round(pct, 2)}
+            "change": round(change, 2), "pct_change": round(pct, 2),
+            "currency": currency}
 
 
 def fetch_quotes(symbols: list[str], retries: int = 2) -> dict[str, dict]:
-    """Returns {symbol: {price, prev_close, change, pct_change, stale}}.
+    """Returns {symbol: {price, prev_close, change, pct_change, currency, stale}}.
     'stale' is True when live data failed and a cached value is being reused.
     """
     out = {}
