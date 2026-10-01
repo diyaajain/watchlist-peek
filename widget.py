@@ -257,13 +257,13 @@ class TickerWidget(tk.Tk):
         bg=BG,
         fg=GREY,
         font=("SF Pro Text", 8),
-        anchor="w"
+        anchor="e",
+        justify="right"
         )
 
         self.date_lbl.pack(
             fill="x",
             padx=8,
-            pady=(1, 1)
         )
 
         self.banner_lbl = tk.Label(
@@ -279,7 +279,7 @@ class TickerWidget(tk.Tk):
         self.banner_lbl.pack(
             fill="x",
             padx=8,
-            pady=(0, 4)
+            pady=(2, 4)
         )
 
         self.list_frame = tk.Frame(
