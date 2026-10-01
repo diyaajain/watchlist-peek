@@ -251,18 +251,35 @@ class TickerWidget(tk.Tk):
 
         self.status_lbl.pack(side="right")
 
+        self.date_lbl = tk.Label(
+        self,
+        text=time.strftime("%B %d, %Y"),
+        bg=BG,
+        fg=GREY,
+        font=("SF Pro Text", 8),
+        anchor="w"
+        )
+
+        self.date_lbl.pack(
+            fill="x",
+            padx=8,
+            pady=(1, 1)
+        )
+
         self.banner_lbl = tk.Label(
             self,
             text="",
             bg=BG,
             fg=CLOSED_COLOR,
             font=("SF Pro Text", 8, "italic"),
-            anchor="w"
+            anchor="center",
+            justify="center"
         )
 
         self.banner_lbl.pack(
             fill="x",
-            padx=8
+            padx=8,
+            pady=(0, 4)
         )
 
         self.list_frame = tk.Frame(
@@ -331,7 +348,8 @@ class TickerWidget(tk.Tk):
                 bg=BG,
                 fg=GREY,
                 font=FONT_PRICE,
-                anchor="e"
+                anchor="e",
+                padx=10
             )
 
             price_lbl.pack(
@@ -708,7 +726,7 @@ class TickerWidget(tk.Tk):
             text=(
                 "stale"
                 if any_stale
-                else time.strftime("%H:%M:%S")
+                else time.strftime("%H:%M:%S") + " / " + time.strftime("%I:%M:%S %p")
             )
         )
 
@@ -718,10 +736,11 @@ class TickerWidget(tk.Tk):
     def _update_banner(self, open_now: bool):
 
         self.banner_lbl.config(
-            text=(
-                ""
+            text=
+            (
+                "● Market open · Live prices"
                 if open_now
-                else "● Markets closed — showing last available price"
+                else "● Markets closed · Showing last available price"
             )
         )
 
