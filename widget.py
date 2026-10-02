@@ -16,6 +16,26 @@ import fetcher
 import markets
 
 
+def _place_beside(dialog: tk.Toplevel, parent: tk.Tk, gap: int = 14) -> None:
+    """Position a dialog to the right of the widget (or the left, if there's
+    not enough screen room), instead of nearly on top of it."""
+    dialog.update_idletasks()
+    w = dialog.winfo_reqwidth()
+    h = dialog.winfo_reqheight()
+    px, py = parent.winfo_x(), parent.winfo_y()
+    pw = parent.winfo_width()
+    screen_w = parent.winfo_screenwidth()
+    screen_h = parent.winfo_screenheight()
+
+    if px + pw + gap + w <= screen_w:
+        x = px + pw + gap   # room to the right of the widget
+    else:
+        x = max(0, px - w - gap)   # not enough room; use the left side instead
+
+    y = min(max(0, py), max(0, screen_h - h))
+    dialog.geometry(f"+{x}+{y}")
+
+
 def ask_string(parent, title, prompt) -> str | None:
     """A text-input popup that forces itself above the always-on-top widget.
 
@@ -65,19 +85,21 @@ def ask_string(parent, title, prompt) -> str | None:
     entry.bind("<Return>", confirm)
     dialog.bind("<Escape>", cancel)
 
-    dialog.update_idletasks()
-
-    x = parent.winfo_x() + 30
-    y = parent.winfo_y() + 30
-
-    dialog.geometry(f"+{x}+{y}")
+    _place_beside(dialog, parent)
     dialog.attributes("-topmost", True)
     dialog.lift()
     dialog.focus_force()
     entry.focus_set()
     dialog.grab_set()
 
-    parent.wait_window(dialog)
+    # Tell the widget a modal dialog is open, so its background auto-resize
+    # (which briefly toggles window chrome) doesn't run and break this
+    # dialog's grab — that was causing the freeze.
+    parent._modal_depth = getattr(parent, "_modal_depth", 0) + 1
+    try:
+        parent.wait_window(dialog)
+    finally:
+        parent._modal_depth -= 1
 
     return result["value"]
 
@@ -123,18 +145,17 @@ def ask_yes_no(parent, title, prompt) -> bool:
         width=8
     ).pack(side="left")
 
-    dialog.update_idletasks()
-
-    x = parent.winfo_x() + 30
-    y = parent.winfo_y() + 30
-
-    dialog.geometry(f"+{x}+{y}")
+    _place_beside(dialog, parent)
     dialog.attributes("-topmost", True)
     dialog.lift()
     dialog.focus_force()
     dialog.grab_set()
 
-    parent.wait_window(dialog)
+    parent._modal_depth = getattr(parent, "_modal_depth", 0) + 1
+    try:
+        parent.wait_window(dialog)
+    finally:
+        parent._modal_depth -= 1
 
     return result["value"]
 
@@ -161,10 +182,7 @@ def show_info(parent, title, message) -> None:
         width=10
     ).pack(pady=(0, 12))
 
-    dialog.update_idletasks()
-    x = parent.winfo_x() + 30
-    y = parent.winfo_y() + 30
-    dialog.geometry(f"+{x}+{y}")
+    _place_beside(dialog, parent)
     dialog.attributes("-topmost", True)
     dialog.lift()
     dialog.focus_force()
@@ -172,7 +190,11 @@ def show_info(parent, title, message) -> None:
     dialog.bind("<Return>", lambda e: dialog.destroy())
     dialog.bind("<Escape>", lambda e: dialog.destroy())
 
-    parent.wait_window(dialog)
+    parent._modal_depth = getattr(parent, "_modal_depth", 0) + 1
+    try:
+        parent.wait_window(dialog)
+    finally:
+        parent._modal_depth -= 1
 
 
 REFRESH_SECONDS = 15
@@ -213,6 +235,7 @@ class TickerWidget(tk.Tk):
 
         self.rows: dict[str, dict] = {}
         self._last_quotes: dict[str, dict] = {}
+        self._modal_depth = 0  # >0 while a dialog (Add symbol, Market status...) is open
 
         self.display_mode = tk.StringVar(
             value=db.get_setting("display_mode", "pct")
@@ -417,6 +440,14 @@ class TickerWidget(tk.Tk):
 
         # Let all labels/frames calculate their current requested size.
         self.update_idletasks()
+
+        if getattr(self, "_modal_depth", 0) > 0:
+            # A dialog (Add symbol, Market status, ...) currently holds an
+            # input grab. Toggling overrideredirect on this window while a
+            # child dialog has the grab breaks that grab on macOS and can
+            # freeze the whole app — so skip resizing until the dialog
+            # closes; the next refresh after that will resize normally.
+            return
 
         x = self.winfo_x()
         y = self.winfo_y()
