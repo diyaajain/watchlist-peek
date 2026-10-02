@@ -36,11 +36,15 @@ def _place_beside(dialog: tk.Toplevel, parent: tk.Tk, gap: int = 14) -> None:
     dialog.geometry(f"+{x}+{y}")
 
 
-def ask_string(parent, title, prompt) -> str | None:
+def ask_string(parent, title, prompt, placeholder: str | None = None) -> str | None:
     """A text-input popup that forces itself above the always-on-top widget.
 
     tkinter's built-in simpledialog does NOT do this, which is why it used
     to appear hidden behind the widget.
+
+    If `placeholder` is given, it's shown as faded hint text inside the
+    field and disappears the moment the person starts typing (a plain
+    tk.Entry has no built-in support for this, so it's done by hand below).
     """
     dialog = tk.Toplevel(parent)
     dialog.title(title)
@@ -53,13 +57,43 @@ def ask_string(parent, title, prompt) -> str | None:
         padx=12
     ).pack(pady=(10, 0))
 
-    entry = tk.Entry(dialog, width=32)
+    PLACEHOLDER_FG = "#999999"
+    NORMAL_FG = "black"
+
+    entry = tk.Entry(dialog, width=32, fg=NORMAL_FG)
     entry.pack(padx=12, pady=10)
+
+    placeholder_active = {"on": False}
+
+    def show_placeholder():
+        entry.delete(0, tk.END)
+        entry.insert(0, placeholder)
+        entry.config(fg=PLACEHOLDER_FG)
+        placeholder_active["on"] = True
+
+    def clear_placeholder(event=None):
+        if placeholder_active["on"]:
+            entry.delete(0, tk.END)
+            entry.config(fg=NORMAL_FG)
+            placeholder_active["on"] = False
+
+    def restore_if_empty(event=None):
+        if not entry.get():
+            show_placeholder()
+
+    if placeholder:
+        show_placeholder()
+        # The field is auto-focused below (entry.focus_set()), so a
+        # FocusIn-based approach would clear the hint before it's even
+        # seen. Clearing on the first real keystroke is what gives the
+        # "vanishes when you start typing" behavior instead.
+        entry.bind("<Key>", clear_placeholder)
+        entry.bind("<FocusOut>", restore_if_empty)
 
     result: dict = {"value": None}
 
     def confirm(event=None):
-        result["value"] = entry.get()
+        result["value"] = "" if placeholder_active["on"] else entry.get()
         dialog.destroy()
 
     def cancel(event=None):
@@ -643,7 +677,8 @@ class TickerWidget(tk.Tk):
         symbol = ask_string(
             self,
             "Add symbol",
-            "yfinance symbol, e.g. RELIANCE.NS, TCS.NS, AAPL, MSFT:"
+            "yfinance symbol (case-insensitive):",
+            placeholder="e.g. RELIANCE.NS"
         )
 
         if not symbol:
