@@ -1,4 +1,4 @@
-"""SQLite helpers for the watchlist and price history."""
+"""SQLite helpers for the watchlist, price history, and settings."""
 import sqlite3
 import sys
 from pathlib import Path
@@ -15,7 +15,7 @@ def _resource_path(name: str) -> Path:
 def _data_dir() -> Path:
     """A writable, persistent location outside the app bundle — a packaged
     .app's own folder isn't a safe place to write a database."""
-    d = Path.home() / "Library" / "Application Support" / "NiftyTracker"
+    d = Path.home() / "Library" / "Application Support" / "WatchlistPeek"
     d.mkdir(parents=True, exist_ok=True)
     return d
 
@@ -76,7 +76,7 @@ def remove_symbol(symbol: str) -> None:
 
 
 def log_prices(quotes: dict[str, dict]) -> None:
-    """quotes: {symbol: {price, prev_close, change, pct_change}}"""
+    """quotes: {symbol: {price, prev_close, change, pct_change, ...}}"""
     conn = connect()
     conn.executemany(
         """INSERT INTO price_log (symbol, price, prev_close, change, pct_change)

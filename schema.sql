@@ -1,7 +1,7 @@
--- NIFTY desktop tracker: database schema (SQLite)
+-- Watchlist Peek: database schema (SQLite)
 
 CREATE TABLE IF NOT EXISTS watchlist (
-    symbol       TEXT PRIMARY KEY,   -- yfinance symbol, e.g. '^NSEI', 'RELIANCE.NS'
+    symbol       TEXT PRIMARY KEY,   -- yfinance symbol, e.g. '^NSEI', 'RELIANCE.NS', 'AAPL'
     display_name TEXT NOT NULL,      -- shown on the widget, e.g. 'NIFTY 50', 'Reliance'
     sort_order   INTEGER DEFAULT 0,
     added_at     TEXT DEFAULT CURRENT_TIMESTAMP

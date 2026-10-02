@@ -9,30 +9,11 @@ Left-click and drag anywhere on the widget to move it.
 import threading
 import time
 import tkinter as tk
-from datetime import datetime, time as dtime
-from zoneinfo import ZoneInfo
+from datetime import datetime
 
 import db
 import fetcher
-
-
-IST = ZoneInfo("Asia/Kolkata")
-MARKET_OPEN = dtime(9, 15)
-MARKET_CLOSE = dtime(15, 30)
-
-
-def is_market_open(now: datetime | None = None) -> bool:
-    """NSE's regular trading session: 9:15-15:30 IST, Monday-Friday.
-
-    Doesn't account for exchange holidays (Diwali, Republic Day, etc.) —
-    on those days this will say 'open' when the market is actually shut.
-    """
-    now = now or datetime.now(IST)
-
-    if now.weekday() >= 5:  # Saturday=5, Sunday=6
-        return False
-
-    return MARKET_OPEN <= now.time() <= MARKET_CLOSE
+import markets
 
 
 def ask_string(parent, title, prompt) -> str | None:
@@ -158,6 +139,42 @@ def ask_yes_no(parent, title, prompt) -> bool:
     return result["value"]
 
 
+def show_info(parent, title, message) -> None:
+    """A read-only popup (OK button only), always-on-top like ask_string/ask_yes_no."""
+    dialog = tk.Toplevel(parent)
+    dialog.title(title)
+    dialog.resizable(False, False)
+    dialog.transient(parent)
+
+    tk.Label(
+        dialog,
+        text=message,
+        padx=16,
+        pady=14,
+        justify="left"
+    ).pack()
+
+    tk.Button(
+        dialog,
+        text="OK",
+        command=dialog.destroy,
+        width=10
+    ).pack(pady=(0, 12))
+
+    dialog.update_idletasks()
+    x = parent.winfo_x() + 30
+    y = parent.winfo_y() + 30
+    dialog.geometry(f"+{x}+{y}")
+    dialog.attributes("-topmost", True)
+    dialog.lift()
+    dialog.focus_force()
+    dialog.grab_set()
+    dialog.bind("<Return>", lambda e: dialog.destroy())
+    dialog.bind("<Escape>", lambda e: dialog.destroy())
+
+    parent.wait_window(dialog)
+
+
 REFRESH_SECONDS = 15
 REFRESH_SECONDS_CLOSED = 180
 
@@ -166,7 +183,6 @@ FG = "#e6e6e6"
 GREEN = "#3ddc84"
 RED = "#ff5c5c"
 GREY = "#8a8a8a"
-CLOSED_COLOR = "#d9a441"
 
 FONT_SYMBOL = ("SF Pro Text", 11, "bold")
 FONT_PRICE = ("SF Pro Text", 11)
@@ -270,8 +286,8 @@ class TickerWidget(tk.Tk):
             self,
             text="",
             bg=BG,
-            fg=CLOSED_COLOR,
-            font=("SF Pro Text", 8, "italic"),
+            fg=GREY,
+            font=("SF Pro Text", 8),
             anchor="center",
             justify="center"
         )
@@ -314,52 +330,80 @@ class TickerWidget(tk.Tk):
 
         self.rows.clear()
 
+        # Group the watchlist by market so India and US stocks sit in their
+        # own labeled sections instead of one mixed list.
+        groups: dict[str, list] = {}
         for item in db.get_watchlist():
+            m = markets.market_for_symbol(item["symbol"])
+            groups.setdefault(m, []).append(item)
 
-            row = tk.Frame(
+        group_order = [markets.MARKET_IN, markets.MARKET_US]
+        first_group = True
+
+        for m in group_order:
+            items = groups.get(m)
+            if not items:
+                continue
+
+            tk.Label(
                 self.list_frame,
-                bg=BG
-            )
-
-            row.pack(
-                fill="x",
-                pady=1
-            )
-
-            # No fixed width — let Tkinter size this from the actual text.
-            name_lbl = tk.Label(
-                row,
-                text=item["display_name"],
-                bg=BG,
-                fg=FG,
-                font=FONT_SYMBOL,
-                anchor="w"
-            )
-
-            name_lbl.pack(
-                side="left"
-            )
-
-            # No fixed width — this allows the widget to grow/shrink
-            # depending on the current price/change text.
-            price_lbl = tk.Label(
-                row,
-                text="…",
+                text=f"{markets.MARKET_FLAG[m]} {markets.MARKET_NAME[m]}",
                 bg=BG,
                 fg=GREY,
-                font=FONT_PRICE,
-                anchor="e",
-                padx=10
+                font=("SF Pro Text", 8, "bold"),
+                anchor="w"
+            ).pack(
+                fill="x",
+                pady=(0 if first_group else 7, 2)
             )
+            first_group = False
 
-            price_lbl.pack(
-                side="right"
-            )
+            for item in items:
 
-            self.rows[item["symbol"]] = {
-                "price_lbl": price_lbl,
-                "name_lbl": name_lbl
-            }
+                row = tk.Frame(
+                    self.list_frame,
+                    bg=BG
+                )
+
+                row.pack(
+                    fill="x",
+                    pady=1
+                )
+
+                # No fixed width — let Tkinter size this from the actual text.
+                name_lbl = tk.Label(
+                    row,
+                    text=item["display_name"],
+                    bg=BG,
+                    fg=FG,
+                    font=FONT_SYMBOL,
+                    anchor="w"
+                )
+
+                name_lbl.pack(
+                    side="left"
+                )
+
+                # No fixed width — this allows the widget to grow/shrink
+                # depending on the current price/change text.
+                price_lbl = tk.Label(
+                    row,
+                    text="…",
+                    bg=BG,
+                    fg=GREY,
+                    font=FONT_PRICE,
+                    anchor="e",
+                    padx=10
+                )
+
+                price_lbl.pack(
+                    side="right"
+                )
+
+                self.rows[item["symbol"]] = {
+                    "price_lbl": price_lbl,
+                    "name_lbl": name_lbl
+                }
 
         self._resize_to_fit()
 
@@ -466,6 +510,11 @@ class TickerWidget(tk.Tk):
             ).start()
         )
 
+        menu.add_command(
+            label="Market status…",
+            command=self.show_market_status
+        )
+
         menu.add_separator()
 
         display_menu = tk.Menu(
@@ -521,6 +570,27 @@ class TickerWidget(tk.Tk):
                 e.y_root
             )
         )
+
+    def _tracked_markets(self) -> list[str]:
+        """Which market(s) the current watchlist actually touches, so a
+        US-only watchlist isn't judged by NSE's clock and vice versa."""
+        symbols = [r["symbol"] for r in db.get_watchlist()]
+        found = {markets.market_for_symbol(s) for s in symbols}
+        return sorted(found) if found else [markets.MARKET_IN, markets.MARKET_US]
+
+    def show_market_status(self):
+        blocks = []
+        for m in self._tracked_markets():
+            info = markets.market_status_detail(m)
+            text = (
+                f"{markets.MARKET_FLAG[m]} {markets.MARKET_NAME[m]}\n"
+                f"  {info['label']}\n"
+                f"  Local time: {info['local_time']}"
+            )
+            if not info["has_holiday_data"]:
+                text += f"\n  ⚠ No holiday calendar loaded for {datetime.now().year} yet"
+            blocks.append(text)
+        show_info(self, "Market status", "\n\n".join(blocks))
 
     def _on_display_mode_changed(self):
 
@@ -733,34 +803,36 @@ class TickerWidget(tk.Tk):
         # Recalculate widget size after changing text.
         self._resize_to_fit()
 
-    def _update_banner(self, open_now: bool):
+    def _update_banner(self, statuses: dict[str, dict]):
+
+        parts = [
+            f"{markets.MARKET_FLAG[m]} {'Open' if info['open'] else 'Closed'}"
+            for m, info in statuses.items()
+        ]
 
         self.banner_lbl.config(
-            text=
-            (
-                "● Market open · Live prices 🧿"
-                if open_now
-                else "● Markets closed · Showing last available price"
-            )
+            text="   ".join(parts)
         )
 
     def _refresh_loop(self):
 
         while not self._stop:
 
-            open_now = is_market_open()
+            tracked = self._tracked_markets()
+            statuses = {m: markets.market_status_detail(m) for m in tracked}
+            any_open = any(info["open"] for info in statuses.values())
 
             self.after(
                 0,
                 self._update_banner,
-                open_now
+                statuses
             )
 
             self._refresh_once()
 
             time.sleep(
                 REFRESH_SECONDS
-                if open_now
+                if any_open
                 else REFRESH_SECONDS_CLOSED
             )
 
