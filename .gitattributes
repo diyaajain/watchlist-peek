@@ -2,4 +2,4 @@
 * text=auto
 
 # Ensure SQL files are counted as SQL
-*.sql linguist-language=SQL
+*.sql linguist-language=SQL linguist-detectable
