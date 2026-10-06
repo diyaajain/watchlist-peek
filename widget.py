@@ -231,7 +231,7 @@ def show_info(parent, title, message) -> None:
         parent._modal_depth -= 1
 
 
-REFRESH_SECONDS = 15
+REFRESH_SECONDS = 5
 REFRESH_SECONDS_CLOSED = 180
 
 BG = "#0a0a0a"
@@ -242,6 +242,10 @@ GREY = "#8a8a8a"
 
 FONT_SYMBOL = ("SF Pro Text", 11, "bold")
 FONT_PRICE = ("SF Pro Text", 11)
+
+SPARKLINE_W = 46
+SPARKLINE_H = 16
+SPARKLINE_POINTS = 20  # how many recent price_log rows each sparkline shows
 
 
 class TickerWidget(tk.Tk):
@@ -441,6 +445,21 @@ class TickerWidget(tk.Tk):
                     side="left"
                 )
 
+                # Fixed size so each refresh's redraw never changes the
+                # row's footprint — only the line drawn inside it changes.
+                spark_canvas = tk.Canvas(
+                    row,
+                    width=SPARKLINE_W,
+                    height=SPARKLINE_H,
+                    bg=BG,
+                    highlightthickness=0
+                )
+
+                spark_canvas.pack(
+                    side="left",
+                    padx=(6, 0)
+                )
+
                 # No fixed width — this allows the widget to grow/shrink
                 # depending on the current price/change text.
                 price_lbl = tk.Label(
@@ -459,7 +478,8 @@ class TickerWidget(tk.Tk):
 
                 self.rows[item["symbol"]] = {
                     "price_lbl": price_lbl,
-                    "name_lbl": name_lbl
+                    "name_lbl": name_lbl,
+                    "canvas": spark_canvas
                 }
 
         self._resize_to_fit()
@@ -766,6 +786,15 @@ class TickerWidget(tk.Tk):
             quotes
         )
 
+        # Pulled after log_prices() so this refresh's own price is already
+        # included. Done here (background thread), not inside _render, so
+        # SQLite reads never happen on the UI thread.
+        for symbol in symbols:
+            quotes[symbol]["history"] = db.get_price_history(
+                symbol,
+                limit=SPARKLINE_POINTS
+            )
+
         self.after(
             0,
             self._render,
@@ -808,6 +837,34 @@ class TickerWidget(tk.Tk):
 
         return f"{symbol}{q['price']:,.2f}"
 
+    @staticmethod
+    def _draw_sparkline(canvas: tk.Canvas, prices: list[float], color: str):
+        """Draw a minimal line chart of `prices` (oldest first) into `canvas`,
+        scaled to fill it. Leaves the canvas blank if there's not enough
+        history yet to draw a meaningful line."""
+
+        canvas.delete("all")
+
+        if len(prices) < 2:
+            return
+
+        w, h, pad = SPARKLINE_W, SPARKLINE_H, 2
+        lo, hi = min(prices), max(prices)
+        span = hi - lo
+        n = len(prices)
+
+        points = []
+        for i, price in enumerate(prices):
+            x = pad + (w - 2 * pad) * (i / (n - 1))
+            y = (
+                h / 2
+                if span == 0  # flat price over this window — draw a level line
+                else pad + (h - 2 * pad) * (1 - (price - lo) / span)
+            )
+            points.extend((x, y))
+
+        canvas.create_line(*points, fill=color, width=1)
+
     def _render(self, quotes: dict[str, dict]):
 
         self._last_quotes = quotes
@@ -821,12 +878,17 @@ class TickerWidget(tk.Tk):
             if not widgets:
                 continue
 
+            history = q.get("history") or []
+
             if q["price"] is None:
 
                 widgets["price_lbl"].config(
                     text="no data",
                     fg=GREY
                 )
+
+                if "canvas" in widgets:
+                    self._draw_sparkline(widgets["canvas"], history, GREY)
 
                 continue
 
@@ -857,6 +919,9 @@ class TickerWidget(tk.Tk):
                 text=text,
                 fg=color
             )
+
+            if "canvas" in widgets:
+                self._draw_sparkline(widgets["canvas"], history, color)
 
         self.status_lbl.config(
             text=(

@@ -87,6 +87,21 @@ def log_prices(quotes: dict[str, dict]) -> None:
     conn.close()
 
 
+def get_price_history(symbol: str, limit: int = 20) -> list[float]:
+    """Most recent prices for one symbol, oldest first — feeds the sparkline.
+    Pulls from price_log, which every refresh already writes to, so no new
+    data collection is needed for this."""
+    conn = connect()
+    rows = conn.execute(
+        """SELECT price FROM price_log
+           WHERE symbol = ? AND price IS NOT NULL
+           ORDER BY fetched_at DESC LIMIT ?""",
+        (symbol, limit),
+    ).fetchall()
+    conn.close()
+    return [r["price"] for r in reversed(rows)]  # oldest -> newest
+
+
 def get_setting(key: str, default: str | None = None) -> str | None:
     conn = connect()
     row = conn.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()

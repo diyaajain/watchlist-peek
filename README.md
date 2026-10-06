@@ -52,6 +52,17 @@ to a price means the live fetch failed and it's showing the last known value
 (this happens occasionally — Yahoo Finance's free data has no uptime
 guarantee and can rate-limit).
 
+Each row also has a small **sparkline** between the name and the price —
+a minimal line chart of that symbol's last `SPARKLINE_POINTS` (20 by
+default, in `widget.py`) prices from `price_log`, colored the same
+green/red as that row's price. It fills in gradually: a brand-new symbol
+(or a fresh install, with an empty `price_log`) shows a blank sparkline
+until a couple of refreshes have logged enough points to draw a line — this
+is expected, not a bug. Since it's the app's own refresh history, not a
+fixed time window, the x-axis "width" in time differs depending on whether
+markets are open (last ~5 minutes at the 15s refresh rate) or closed (last
+~1 hour at the 3-minute rate).
+
 ### Market status banner
 
 A small line under the header shows each tracked market's state, e.g.
@@ -196,7 +207,6 @@ hardcoded per year and must be refreshed in `markets.py` annually.
 
 ## Ideas to extend it
 
-- A sparkline chart per row, drawn from `price_log`.
 - A settings file for refresh interval, colors, and opacity instead of
   editing constants in `widget.py`.
 - Desktop notifications when a stock crosses a price you set.
